@@ -78,12 +78,12 @@ namespace FastTravel
             }
         }
 
-        internal static void StartTransition()
+        internal static void StartTransition(string sceneName)
         {
-            GameManager.instance.StartCoroutine(DoTransition());
+            GameManager.instance.StartCoroutine(DoTransition(sceneName));
         }
 
-        private static IEnumerator DoTransition()
+        private static IEnumerator DoTransition(string sceneName)
         {
             // Close the map UI
             var invFSM = GameManager.instance.inventoryFSM;
@@ -101,9 +101,6 @@ namespace FastTravel
             }
 
             GameManager.SceneTransitionBegan += Began;
-
-            var textObj = GameCameras.instance.transform.Find("Teleport Cursor/Text");
-            var sceneName = textObj?.GetComponent<TextMeshPro>().text;
 
             GameManager.instance.BeginSceneTransition(new GameManager.SceneLoadInfo
             {

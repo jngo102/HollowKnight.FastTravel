@@ -16,13 +16,23 @@ namespace FastTravel
             _tmpHighlight = GameCameras.instance.transform.Find("Teleport Cursor/Text").GetComponent<TextMeshPro>();
         }
 
+        private void Update()
+        {
+            if (InputHandler.Instance.inputActions.menuSubmit.WasPressed && 
+                _tmpHighlight.text != "" &&
+                USceneManager.GetActiveScene().name != name)
+            {
+                FastTravel.StartTransition(_tmpHighlight.text);
+            }
+        }
+
         public void OnPointerClick(PointerEventData _) 
         {
             if (USceneManager.GetActiveScene().name == name) return;
 
             // This method is in the main class because TeleportButton 
             // becomes inactive once the inventory is closed.
-            FastTravel.StartTransition();
+            FastTravel.StartTransition(_tmpHighlight.text);
         }
 
         public void OnPointerEnter(PointerEventData data)
