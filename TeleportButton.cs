@@ -1,4 +1,7 @@
 using System.Collections;
+using System.Reflection;
+using GlobalEnums;
+using MonoMod.Utils;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -6,8 +9,13 @@ using USceneManager = UnityEngine.SceneManagement.SceneManager;
 
 namespace FastTravel
 {
-    class TeleportButton : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
+    internal class TeleportButton : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
     {
+        private static readonly FastReflectionDelegate SetState = 
+            typeof(HeroController)
+            .GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetFastDelegate();
+        
         private TextMeshPro _tmpHighlight;
 
         private IEnumerator Start()
@@ -16,11 +24,43 @@ namespace FastTravel
             _tmpHighlight = GameCameras.instance.transform.Find("Teleport Cursor/Text").GetComponent<TextMeshPro>();
         }
 
-        public void OnPointerClick(PointerEventData data)
+        private static void Began(SceneLoad load) => 
+            load.Finish += () => GameManager.instance.StartCoroutine(RemoveBlankers());
+
+        private static IEnumerator RemoveBlankers()
         {
-            if (USceneManager.GetActiveScene().name == name) return;
+            while (GameManager.instance.gameState != GameState.PLAYING)
+                yield return null;
+
+            Modding.Logger.Log("feelsdayman");
+            
+            GameManager.instance.FadeSceneIn();
+            
+            PlayMakerFSM.BroadcastEvent("BOX DOWN");
+            PlayMakerFSM.BroadcastEvent("BOX DOWN DREAM");
+
+            var hc = HeroController.instance;
+
+            while (hc.transitionState != HeroTransitionState.EXITING_SCENE)
+                yield return null;
+
+            // Force being able to input to avoid having to wait for the decade long walk-in anim
+            hc.AcceptInput();
+            
+            SetState(hc, ActorStates.idle);
+            
+            GameManager.SceneTransitionBegan -= Began;
+        }
+
+        public void OnPointerClick(PointerEventData _) 
+        {
+            if (USceneManager.GetActiveScene().name == name) 
+                return;
 
             PlayMakerFSM.BroadcastEvent("INVENTORY CANCEL");
+
+            GameManager.SceneTransitionBegan += Began;
+            
             GameManager.instance.BeginSceneTransition(new GameManager.SceneLoadInfo
             {
                 SceneName = _tmpHighlight.text,
