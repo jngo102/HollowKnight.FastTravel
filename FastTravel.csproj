@@ -8,8 +8,8 @@
     <Product>FastTravel</Product>
     <Description>Teleport anywhere within Hallownest by clicking on the map.</Description>
     <Copyright>Copyright © </Copyright>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.1</AssemblyVersion>
+    <FileVersion>1.0.0.1</FileVersion>
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
