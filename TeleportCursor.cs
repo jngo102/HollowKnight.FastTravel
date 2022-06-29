@@ -35,7 +35,7 @@ namespace FastTravel
             sceneDetector.layer = (int)PhysLayers.UGUI;
             _detectCol = sceneDetector.AddComponent<CircleCollider2D>();
             _detectCol.isTrigger = true;
-            _detectCol.radius = 0.1f;
+            _detectCol.radius = 0.5f;
 
             _cam = GameCameras.instance.hudCamera;
             _cam.gameObject.AddComponent<Physics2DRaycaster>();

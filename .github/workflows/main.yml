@@ -22,11 +22,6 @@ jobs:
         run: |
           wget https://github.com/hk-modding/api/releases/latest/download/ModdingApiWin.zip -O API.zip
           unzip -o API.zip -d References
-
-      - name: Fetch Vasi dependency
-        run: |
-          wget https://github.com/fifty-six/HollowKnight.Vasi/releases/latest/download/Vasi.zip -O Vasi.zip
-          unzip -o Vasi.zip -d References
           
       - name: Setup MSBuild
         run: sudo apt-get install -y nuget mono-devel mono-xbuild

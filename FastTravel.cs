@@ -1,10 +1,12 @@
 ﻿using GlobalEnums;
 using Modding;
+using MonoMod.Utils;
+using System.Collections;
 using System.IO;
+using System.Linq;
 using System.Reflection;
+using TMPro;
 using UnityEngine;
-using UnityEngine.EventSystems;
-using Vasi;
 using UObject = UnityEngine.Object;
 using USceneManager = UnityEngine.SceneManagement.SceneManager;
 using USceneUtility = UnityEngine.SceneManagement.SceneUtility;
@@ -13,19 +15,17 @@ namespace FastTravel
 {
     internal class FastTravel : Mod
     {
-        internal static FastTravel Instance { get; private set; }
-
         public FastTravel() : base("Fast Travel") { }
 
-        public override string GetVersion()
-        {
-            return Assembly.GetExecutingAssembly().GetName().Version.ToString();
-        }
+        public override string GetVersion() => Assembly.GetExecutingAssembly().GetName().Version.ToString();
+
+        private static readonly FastReflectionDelegate SetState =
+            typeof(HeroController)
+            .GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetFastDelegate();
 
         public override void Initialize()
         {
-            Instance = this;
-
             On.GameManager.EnterHero += OnHeroEnter;
             On.GameMap.Start += OnMapStart;
             On.PlayMakerFSM.Start += OnPFSMStart;
@@ -34,6 +34,7 @@ namespace FastTravel
         private void OnHeroEnter(On.GameManager.orig_EnterHero orig, GameManager self, bool additiveGateSearch)
         {
             orig(self, additiveGateSearch);
+
             if (self.entryGateName == "none")
             {
                 HeroController.instance.SetHazardRespawn(UObject.FindObjectOfType<HazardRespawnMarker>().transform.position, false);
@@ -75,6 +76,71 @@ namespace FastTravel
                 tpCursor.SetActive(true);
                 tpCursor.AddComponent<TeleportCursor>();
             }
+        }
+
+        internal static void StartTransition()
+        {
+            GameManager.instance.StartCoroutine(DoTransition());
+        }
+
+        private static IEnumerator DoTransition()
+        {
+            // Close the map UI
+            var invFSM = GameManager.instance.inventoryFSM;
+            invFSM.SendEvent("INVENTORY CANCEL");
+            yield return new WaitUntil(() => invFSM.ActiveStateName == "Closed");
+            
+            // Get off bench before doing scene transition or else
+            // map shortcut becomes disabled until benching again
+            var bench = UObject.FindObjectOfType<RestBench>();
+            var benchCtrl = bench?.GetComponents<PlayMakerFSM>().FirstOrDefault(fsm => fsm.ActiveStateName == "Resting");
+            benchCtrl?.SendEvent("GET UP");
+            if (benchCtrl != null)
+            {
+                yield return new WaitUntil(() => benchCtrl?.ActiveStateName == "Idle");
+            }
+
+            GameManager.SceneTransitionBegan += Began;
+
+            var textObj = GameCameras.instance.transform.Find("Teleport Cursor/Text");
+            var sceneName = textObj?.GetComponent<TextMeshPro>().text;
+
+            GameManager.instance.BeginSceneTransition(new GameManager.SceneLoadInfo
+            {
+                SceneName = sceneName,
+                EntryGateName = "none",
+                EntryDelay = 0,
+                Visualization = GameManager.SceneLoadVisualizations.Default,
+                PreventCameraFadeOut = false,
+                WaitForSceneTransitionCameraFade = true,
+                AlwaysUnloadUnusedAssets = false,
+            });
+        }
+
+        private static void Began(SceneLoad load)
+        {
+            load.Finish += () => GameManager.instance.StartCoroutine(RemoveBlankers());
+        }
+
+        private static IEnumerator RemoveBlankers()
+        {
+            yield return new WaitUntil(() => GameManager.instance.gameState == GameState.PLAYING);
+
+            GameManager.instance.FadeSceneIn();
+
+            PlayMakerFSM.BroadcastEvent("BOX DOWN");
+            PlayMakerFSM.BroadcastEvent("BOX DOWN DREAM");
+
+            var hc = HeroController.instance;
+
+            yield return new WaitUntil(() => hc.transitionState == HeroTransitionState.EXITING_SCENE);
+
+            // Force being able to input to avoid having to wait for the decade long walk-in anim
+            hc.AcceptInput();
+
+            SetState(hc, ActorStates.idle);
+
+            GameManager.SceneTransitionBegan -= Began;
         }
     }
 }
