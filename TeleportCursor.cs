@@ -56,7 +56,6 @@ namespace FastTravel
             else
             {
                 _detectCol.enabled = false;
-                EventSystem.current = null;
                 foreach (var rend in GetComponentsInChildren<Renderer>())
                 {
                     rend.enabled = false;
