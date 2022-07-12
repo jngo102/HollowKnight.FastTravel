@@ -2,6 +2,7 @@
 using Modding;
 using MonoMod.Utils;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -13,10 +14,21 @@ using USceneUtility = UnityEngine.SceneManagement.SceneUtility;
 
 namespace FastTravel
 {
-    internal class FastTravel : Mod
+    internal class FastTravel : Mod, IMenuMod, IGlobalSettings<Settings>
     {
         public FastTravel() : base("Fast Travel") { }
-
+        internal static Settings settings = new();
+        void IGlobalSettings<Settings>.OnLoadGlobal(Settings s) => settings = s;
+        Settings IGlobalSettings<Settings>.OnSaveGlobal() => settings;
+        bool IMenuMod.ToggleButtonInsideMenu => false;
+        List<IMenuMod.MenuEntry> IMenuMod.GetMenuData(Modding.IMenuMod.MenuEntry? toggleButtonEntry)
+        {
+            return new()
+            {
+                new("Enable precise teleport", new string[]{ "False", "True" }, "",
+                    id => settings.PreciseTeleport = id == 1, () => settings.PreciseTeleport ? 1 : 0)
+            };
+        }
         public override string GetVersion() => Assembly.GetExecutingAssembly().GetName().Version.ToString();
         public static TeleportCursor teleportCursor;
         private static Vector2 tpPosition;
@@ -38,8 +50,20 @@ namespace FastTravel
 
             if (self.entryGateName == "none")
             {
-                HeroController.instance.SetHazardRespawn(UObject.FindObjectOfType<HazardRespawnMarker>().transform.position, false);
+                if (settings.PreciseTeleport)
+                {
+                    HeroController.instance.SetHazardRespawn(GetTeleportPos(), false);
+                }
+                else
+                {
+                    var teleportPos = GetTeleportPos();
+                    HeroController.instance.SetHazardRespawn(UObject.FindObjectsOfType<HazardRespawnMarker>()
+                        .OrderBy(x => (x.transform.position - teleportPos).sqrMagnitude)
+                        .First()
+                        .transform.position, false);
+                }
                 GameManager.instance.HazardRespawn();
+
             }
         }
 
@@ -79,14 +103,13 @@ namespace FastTravel
             }
         }
 
-        private static void TeleportHero()
+        private static Vector3 GetTeleportPos()
         {
             var tilp = GameManager.instance.tilemap;
             var gm = GameManager.instance.gameMap.GetComponent<GameMap>();
             float originOffsetX = Modding.ReflectionHelper.GetField<GameMap, float>(gm, "originOffsetX");
             float originOffsetY = Modding.ReflectionHelper.GetField<GameMap, float>(gm, "originOffsetY");
-            HeroController.instance.transform.position = 
-                new Vector3(tpPosition.x * tilp.width - originOffsetX, tpPosition.y * tilp.height - originOffsetY, HeroController.instance.transform.position.z);
+            return new Vector3(tpPosition.x * tilp.width - originOffsetX, tpPosition.y * tilp.height - originOffsetY, HeroController.instance.transform.position.z);
         }
 
         internal static void StartTransition(string sceneName, GameObject icon)
@@ -117,15 +140,6 @@ namespace FastTravel
             if (benchCtrl != null)
             {
                 yield return new WaitUntil(() => benchCtrl?.ActiveStateName == "Idle");
-            }
-
-            if (sceneName == USceneManager.GetActiveScene().name)
-            {
-                var hc = HeroController.instance;
-                hc.AcceptInput();
-                SetState(hc, ActorStates.idle);
-                TeleportHero();
-                yield break;
             }
 
             GameManager.SceneTransitionBegan += Began;
@@ -164,8 +178,6 @@ namespace FastTravel
             hc.AcceptInput();
 
             SetState(hc, ActorStates.idle);
-
-            TeleportHero();
 
             GameManager.SceneTransitionBegan -= Began;
         }
