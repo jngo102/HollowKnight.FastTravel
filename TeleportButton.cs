@@ -22,7 +22,7 @@ namespace FastTravel
                 _tmpHighlight.text != "" &&
                 USceneManager.GetActiveScene().name != name)
             {
-                FastTravel.StartTransition(_tmpHighlight.text);
+                FastTravel.StartTransition(_tmpHighlight.text, gameObject);
             }
         }
 
@@ -32,7 +32,7 @@ namespace FastTravel
 
             // This method is in the main class because TeleportButton 
             // becomes inactive once the inventory is closed.
-            FastTravel.StartTransition(_tmpHighlight.text);
+            FastTravel.StartTransition(_tmpHighlight.text, gameObject);
         }
 
         public void OnPointerEnter(PointerEventData data)

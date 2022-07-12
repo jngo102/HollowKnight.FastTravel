@@ -2,6 +2,7 @@
 using Modding;
 using MonoMod.Utils;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -13,12 +14,24 @@ using USceneUtility = UnityEngine.SceneManagement.SceneUtility;
 
 namespace FastTravel
 {
-    internal class FastTravel : Mod
+    internal class FastTravel : Mod, IMenuMod, IGlobalSettings<Settings>
     {
         public FastTravel() : base("Fast Travel") { }
-
+        internal static Settings settings = new();
+        void IGlobalSettings<Settings>.OnLoadGlobal(Settings s) => settings = s;
+        Settings IGlobalSettings<Settings>.OnSaveGlobal() => settings;
+        bool IMenuMod.ToggleButtonInsideMenu => false;
+        List<IMenuMod.MenuEntry> IMenuMod.GetMenuData(Modding.IMenuMod.MenuEntry? toggleButtonEntry)
+        {
+            return new()
+            {
+                new("Enable precise teleport", new string[]{ "False", "True" }, "",
+                    id => settings.PreciseTeleport = id == 1, () => settings.PreciseTeleport ? 1 : 0)
+            };
+        }
         public override string GetVersion() => Assembly.GetExecutingAssembly().GetName().Version.ToString();
-
+        public static TeleportCursor teleportCursor;
+        private static Vector2 tpPosition;
         private static readonly FastReflectionDelegate SetState =
             typeof(HeroController)
             .GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)
@@ -37,8 +50,20 @@ namespace FastTravel
 
             if (self.entryGateName == "none")
             {
-                HeroController.instance.SetHazardRespawn(UObject.FindObjectOfType<HazardRespawnMarker>().transform.position, false);
+                if (settings.PreciseTeleport)
+                {
+                    HeroController.instance.SetHazardRespawn(GetTeleportPos(), false);
+                }
+                else
+                {
+                    var teleportPos = GetTeleportPos();
+                    HeroController.instance.SetHazardRespawn(UObject.FindObjectsOfType<HazardRespawnMarker>()
+                        .OrderBy(x => (x.transform.position - teleportPos).sqrMagnitude)
+                        .First()
+                        .transform.position, false);
+                }
                 GameManager.instance.HazardRespawn();
+
             }
         }
 
@@ -71,25 +96,42 @@ namespace FastTravel
 
             GameObject tpCursor = null;
             if (self.name == "World Map" && self.FsmName == "UI Control")
-            {   
+            {
                 tpCursor = UObject.Instantiate(self.transform.Find("Map Markers/Placement Cursor").gameObject, self.transform.root);
                 tpCursor.SetActive(true);
-                tpCursor.AddComponent<TeleportCursor>();
+                teleportCursor = tpCursor.AddComponent<TeleportCursor>();
             }
         }
 
-        internal static void StartTransition(string sceneName)
+        private static Vector3 GetTeleportPos()
         {
-            GameManager.instance.StartCoroutine(DoTransition(sceneName));
+            var tilp = GameManager.instance.tilemap;
+            var gm = GameManager.instance.gameMap.GetComponent<GameMap>();
+            float originOffsetX = Modding.ReflectionHelper.GetField<GameMap, float>(gm, "originOffsetX");
+            float originOffsetY = Modding.ReflectionHelper.GetField<GameMap, float>(gm, "originOffsetY");
+            return new Vector3(tpPosition.x * tilp.width - originOffsetX, tpPosition.y * tilp.height - originOffsetY, HeroController.instance.transform.position.z);
         }
 
-        private static IEnumerator DoTransition(string sceneName)
+        internal static void StartTransition(string sceneName, GameObject icon)
         {
+            GameManager.instance.StartCoroutine(DoTransition(sceneName, icon));
+        }
+
+        private static IEnumerator DoTransition(string sceneName, GameObject icon)
+        {
+            var spriteSize = (Vector2)icon.GetComponent<SpriteRenderer>().sprite.bounds.size;
+            var spritePos = (Vector2)icon.transform.position - spriteSize / 2;
+            var hudCam = GameCameras.instance.hudCamera;
+            var mousePos = Input.mousePosition;
+            mousePos.z = hudCam.ScreenToWorldPoint(Vector3.zero).z;
+            var offset = (Vector2)hudCam.ScreenToWorldPoint(mousePos) - spritePos;
+            tpPosition.x = offset.x / (spriteSize.x * GameManager.instance.gameMap.transform.localScale.x) * GameManager.instance.gameMap.transform.localScale.x;
+            tpPosition.y = offset.y / (spriteSize.y * GameManager.instance.gameMap.transform.localScale.y) * GameManager.instance.gameMap.transform.localScale.y;
             // Close the map UI
             var invFSM = GameManager.instance.inventoryFSM;
             invFSM.SendEvent("INVENTORY CANCEL");
             yield return new WaitUntil(() => invFSM.ActiveStateName == "Closed");
-            
+
             // Get off bench before doing scene transition or else
             // map shortcut becomes disabled until benching again
             var bench = UObject.FindObjectOfType<RestBench>();
